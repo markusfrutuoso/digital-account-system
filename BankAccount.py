@@ -1,74 +1,115 @@
 import time
+import csv
+import io
 
-class BankAccount:
-    def __init__(self, id_account, balance = 0.0):
+
+class Account:
+    def __init__(self, id, balance=0.0, credit_limit=0):
         if balance < 0:
             raise ValueError
-        self.id = id_account
+        if credit_limit < 0:
+            raise ValueError
+        self.id = id
         self.balance = balance
-        self.history_transactions = []
+        self.credit_limit = credit_limit
+        self.history_transaction = []
 
-    def record_history_transactions(self, type: str, amount: float, timestamp=None):
+    def validate_debit(self, amount):
+        total = self.balance + self.credit_limit
+        if amount > total or amount<=0:
+            raise ValueError
+        return 
+
+    def record_history_transaction(self, transaction_type, amount, timestamp=None):
         if timestamp is None:
             timestamp = time.time()
-        self.history_transactions.append({
-            "type": type,
+        self.history_transaction.append({
+            "transaction_type": transaction_type,
             "amount": amount,
             "timestamp": timestamp,
         })
 
-    def deposit(self, amount: float, timestamp=None):
+    def deposit(self, amount, timestamp=None):
         if amount <= 0:
             raise ValueError
         self.balance += amount
-        self.record_history_transactions("deposit", amount, timestamp)
-        return True
+        self.record_history_transaction("deposit", amount, timestamp)
 
-    def withdraw(self, amount: float, timestamp=None):
-        if amount <= 0 or amount > self.balance:
-            raise ValueError
+    def withdraw(self, amount, timestamp=None):
+        self.validate_debit(amount)
         self.balance -= amount
-        self.record_history_transactions("withdraw", amount, timestamp)
-        return True
+        self.record_history_transaction("withdraw", amount, timestamp)
 
-    def get_bank_statement(self):
-        return self.history_transactions
+    def get_statement(self):
+        return [
+        transaction.copy()
+        for transaction in self.history_transaction
+    ]
 
-    def get_total_deposit(self):
+    def get_total_deposits(self):
         return sum(
-            transaction["amount"]
-            for transaction in self.history_transactions
-            if transaction["type"] == "deposit"
-        )
+            deposits["amount"]
+            for deposits in self.history_transaction
+            if deposits["transaction_type"] == "deposit"
+            )
 
-    def get_total_withdraw(self):
+    def get_total_withdraws(self):
         return sum(
-            transaction["amount"]
-            for transaction in self.history_transactions
-            if transaction["type"] == "withdraw"
-        )
+            withdraws["amount"]
+            for withdraws in self.history_transaction
+            if withdraws["transaction_type"] == "withdraw"
+            )
 
     def export_bank_statement(self):
-        if not self.history_transactions:
-            return []
-        for statement in self.history_transactions:
-            print(statement)
-        return True
+        output = io.StringIO()
+        writer = csv.writer(output, lineterminator="\n")
 
-    def transfer(self, id_secondary, amount):
-        if self.balance < amount or amount <= 0:
-            raise ValueError
-        if self is id_secondary:
-            raise ValueError
-        self.balance -= amount
-        id_secondary.balance += amount
-        self.record_history_transactions("transfer", -amount, None)
-        id_secondary.record_history_transactions("transfer", amount, None)
-        return True
+        writer.writerow(["transaction_type", "amount", "timestamp"])
 
-p1 = BankAccount(2, 300)
-p2 = BankAccount(3, 300)
-p1.deposit(200)
-p1.deposit(300)
-print(p1.export_bank_statement())
-p1.transfer(3, 100)
+        for transaction in self.history_transaction:
+            writer.writerow([
+                transaction["transaction_type"],
+                transaction["amount"],
+                transaction["timestamp"],
+            ])
+        return output.getvalue()
+
+class Bank:
+    def __init__(self):
+        self.accounts = {}
+
+    def create_acc(self, account_id, balance = 0.0, credit_limit = 0):
+        if account_id in self.accounts:
+            raise ValueError
+        account = Account(account_id, balance, credit_limit)
+        self.accounts[account_id] = account
+        return account
+    
+    def get_by_id(self, account_id):
+        if account_id not in self.accounts:
+            raise ValueError
+
+        return self.accounts[account_id]
+
+    def transfer(self, id_from, id_to, amount, timestamp=None):
+        if id_from == id_to:
+            raise ValueError
+        acc_from = self.get_by_id(id_from)
+        acc_to = self.get_by_id(id_to)
+        acc_from.validate_debit(amount)
+        if timestamp is None:
+            timestamp = time.time()
+        acc_from.balance -= amount
+        acc_to.balance += amount
+
+        acc_from.record_history_transaction("transfer_out", amount, timestamp)
+        acc_to.record_history_transaction("transfer_in", amount, timestamp)
+
+    def contas_no_limite(self):
+        return [
+            account.id
+            for account in self.accounts.values()
+            if account.balance < 0
+        ]
+
+        
